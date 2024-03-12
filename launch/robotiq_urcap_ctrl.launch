@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="robot_ip" default="192.168.1.102"/>
+  <node pkg="robotiq_urcap_control" type="robotic_urcap_ctrl_py3.py" name="robotic_urcap_ctrl_py3">
+    <param name="robot_ip" value="$(arg robot_ip)" />
+  </node>
+</launch>

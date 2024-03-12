@@ -68,6 +68,8 @@ class RobotiqGripper:
 
     def connect(self, socket_timeout=2.0):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print(self.robot_ip)
+        print(self._robotiq_urcap_port)
         self.socket.connect((self.robot_ip, self._robotiq_urcap_port))
         self.socket.settimeout(socket_timeout)
 
@@ -139,11 +141,14 @@ class RobotiqGripper:
         :param auto_calibrate: Whether to calibrate the minimum and maximum positions based on actual motion.
         """
         # clear and then reset ACT
-        self._set_var(self.STA, 0)
-        self._set_var(self.STA, 1)
+        var_dict = {self.STA: 0}
+        self._set_vars(var_dict)
+        var_dict = {self.ACT: 1}
+        self._set_vars(var_dict)
 
         # wait for activation to go through
         while not self.is_active():
+            print("not active")
             time.sleep(0.001)
 
         # auto-calibrate position range if desired
@@ -153,7 +158,9 @@ class RobotiqGripper:
     def is_active(self):
         """Returns whether the gripper is active."""
         status = self._get_var(self.STA)
-        return status == RobotiqGripper.GripperStatus.ACTIVE
+        active = (status == RobotiqGripper.GripperStatus.ACTIVE.value)
+
+        return active
 
     def get_min_position(self):
         """Returns the minimum position the gripper can reach (open position)."""
@@ -190,19 +197,20 @@ class RobotiqGripper:
         """
         # first try to open in case we are holding an object
         (position, status) = self.move_and_wait_for_pos(self.get_open_position(), 1, 1)
-        if status != RobotiqGripper.ObjectStatus.AT_DEST:
+        rospy.sleep(3)
+        if status != RobotiqGripper.ObjectStatus.AT_DEST.value:
             raise RuntimeError("Calibration failed opening to start: " + str(status))
 
         # try to close as far as possible, and record the number
         (position, status) = self.move_and_wait_for_pos(self.get_closed_position(), 1, 1)
-        if status != RobotiqGripper.ObjectStatus.AT_DEST:
+        if status != RobotiqGripper.ObjectStatus.AT_DEST.value:
             raise RuntimeError("Calibration failed because of an object: " + str(status))
         assert position <= self._max_position
         self._max_position = position
 
         # try to open as far as possible, and record the number
         (position, status) = self.move_and_wait_for_pos(self.get_open_position(), 1, 1)
-        if status != RobotiqGripper.ObjectStatus.AT_DEST:
+        if status != RobotiqGripper.ObjectStatus.AT_DEST.value:
             raise RuntimeError("Calibration failed because of an object: " + str(status))
         assert position >= self._min_position
         self._min_position = position
@@ -258,7 +266,7 @@ class RobotiqGripper:
 
         # wait until not moving
         cur_obj = self._get_var(self.OBJ)
-        while cur_obj == RobotiqGripper.ObjectStatus.MOVING:
+        while cur_obj == RobotiqGripper.ObjectStatus.MOVING.value:
             cur_obj = self._get_var(self.OBJ)
 
         # report the actual position and the object status
@@ -284,6 +292,7 @@ class RobotiqGripper:
 
 
 def mainLoop(device):
+    print(device)
     gripper = RobotiqGripper(robot_ip=device)
     gripper.connect()
 
@@ -296,6 +305,7 @@ def mainLoop(device):
     # The Gripper command is received from the topic named 'Robotiq2FGripperRobotOutput'
     rospy.Subscriber('Robotiq2FGripperRobotOutput', outputMsg, gripper.send_command)
 
+    gripper.activate()
     # We loop
     while not rospy.is_shutdown():
         # Get and publish the Gripper status
@@ -304,10 +314,8 @@ def mainLoop(device):
         pub_gripper.publish(Int16(status.gPO))
 
         # Wait a little
-        # rospy.sleep(0.05)
-
-        # Send the most recent command
-        #gripper.send_command()
+        rospy.sleep(0.05)
+        # rospy.spin()
 
         # Wait a little
         # rospy.sleep(0.05)
@@ -315,8 +323,9 @@ def mainLoop(device):
 
 if __name__ == '__main__':
     try:
-        print(("Connecting to :" + str(sys.argv[1])))
-        mainLoop(sys.argv[1])
+        robot_ip = rospy.get_param('/robotic_urcap_ctrl_py3/robot_ip')
+        rospy.logerr(("Connecting to: " + robot_ip))
+        mainLoop(robot_ip)
     except rospy.ROSInterruptException:
         pass
 
